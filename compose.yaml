@@ -1,0 +1,13 @@
+services:
+  backend:
+    build: ./backend/
+    ports:
+      - "8080:8080"
+
+  frontend:
+    build: ./frontend/
+    ports:
+      - "5173:5173"
+  
+  database:
+    image: postgres:19rc1
