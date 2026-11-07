@@ -17,7 +17,9 @@ WIP
 # Development
 
 ## Using Docker
-WIP
+1) Run `docker compose up --build`
+2) Go to `http://localhost:5173` for the frontend
+3) Go to `http://localhost:8080` for the backend API
 
 ## Without Docker
 
