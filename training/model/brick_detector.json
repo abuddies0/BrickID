@@ -1,0 +1,13 @@
+{
+    "model": "brick_detector",
+    "architecture": "YOLOv8",
+    "framework": "TensorFlow",
+    "input_size": [512, 512],
+    "input_channels": 3,
+    "input_format": "RGB",
+    "input_range": [0, 255],
+    "bounding_box_format": "xyxy",
+    "classes": {
+        "0": "brick"
+    }
+}
