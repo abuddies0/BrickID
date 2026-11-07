@@ -1,9 +1,12 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from typing import Annotated
 
 from vision import detector, identifier
 from vision.identifier import bytes_to_image
+
+# from PIL import Image, ImageDraw
 
 
 @asynccontextmanager
@@ -19,13 +22,26 @@ async def lifespan(app: FastAPI):
     detector.cleanup_models()
 
 
-app = FastAPI()
+app = FastAPI(lifespan=lifespan)
+
+
+origins = [
+    "http://localhost:5173",  # Default for Vite
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],  # Allow all HTTP methods (GET, POST, PUT, DELETE, etc.)
+    allow_headers=["*"],  # Allow all headers
+)
 
 
 ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"]
 
-@app.post("/uploadbrick/")
-async def upload_brick(file: UploadFile):
+@app.post("/uploadbrick")
+async def upload_brick(file: UploadFile = File(...)) -> dict[str, tuple[int, int, int, int]]:
     """
     Whenever a brick is uploaded, it will be compared against
     the bricks currently saved in the system.
@@ -63,8 +79,12 @@ async def upload_brick(file: UploadFile):
             detail = "Failed to convert image to usable form."
         )
 
+    # img = Image.fromarray(image)
+    # img.save('my_image.png')
+    
     # Find all bricks in the image
     detected = detector.detect_bricks(image)
+
     if not detected:
         raise HTTPException(
             status_code = 404,
@@ -75,6 +95,8 @@ async def upload_brick(file: UploadFile):
     bb_size = [(brick[2]-brick[0]) * (brick[3]-brick[1]) for brick in detected]
     brick = detected[bb_size.index(max(bb_size))]
 
-    return brick
+    print(f"Response: {({"bounding_box": brick})}")
+
+    return {"bounding_box": brick}
 
     # confidence = identifier.identify_brick(image, brick)

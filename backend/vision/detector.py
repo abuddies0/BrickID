@@ -5,11 +5,12 @@
 #               all bricks in an image
 #
 ###################################################################
-from PIL import Image, ImageDraw
+# from PIL import Image, ImageDraw
 from cv2.typing import MatLike
 import numpy as np
 from numpy.typing import NDArray
 import onnxruntime as ort
+import cv2 as cv
 
 
 INPUT_SIZE = 512
@@ -35,13 +36,14 @@ def load_models():
         providers=["CPUExecutionProvider"]
     )
     input_name = session.get_inputs()[0].name
+    print("Loaded detection models!")
 
 
 def cleanup_models():
     """
     Properly deloads the models before program halting
     """
-    pass
+    print("Cleaned up detection models!")
 
 
 def _decode_boxes(raw_boxes) -> NDArray[np.float64]:
@@ -164,6 +166,7 @@ def _predict(image):
                 x1, y1, x2, y2, confidence.
     """
     if session is None:
+        print("Session is none! Oh noes")
         return None
 
     image = np.asarray(image, dtype=np.float32)
@@ -247,30 +250,74 @@ def detect_bricks(image: MatLike) -> list[tuple[int, int, int, int]]:
     :param image: The image to search for bricks in
     :return: A list of bounding boxes in the form of (x_topleft, y_topleft, x_bottomright, y_bottomright)
     """
-    image = np.resize(image, (512, 512))
+    if image is None or image.ndim != 3 or image.shape[2] != 3:
+        raise ValueError("Expected a valid RGB image with 3 channels.")
 
-    predictions = _predict(image)
+    height, width = image.shape[:2]
+
+    scale = min(INPUT_SIZE / width, INPUT_SIZE / height)
+
+    new_width = round(width * scale)
+    new_height = round(height * scale)
+
+    # Properly resize the image to the model's input dimensions.
+    resized = cv.resize(
+        image,
+        (new_width, new_height),
+        interpolation=cv.INTER_LINEAR,
+    )
+
+    canvas = np.zeros((INPUT_SIZE, INPUT_SIZE, 3), dtype=np.uint8)
+    pad_x = (INPUT_SIZE - new_width) // 2
+    pad_y = (INPUT_SIZE - new_height) // 2
+
+    canvas[
+        pad_y:pad_y + new_height,
+        pad_x:pad_x + new_width
+    ] = resized
+
+    predictions = _predict(canvas)
     if predictions is None:
         return []
 
-    draw_image = Image.fromarray(image)
-    draw = ImageDraw.Draw(draw_image)
+    # draw_image = Image.fromarray(image)
+    # draw = ImageDraw.Draw(draw_image)
+
+    results = []
 
     for x1, y1, x2, y2, confidence in predictions:
-        draw.rectangle(
-            (x1, y1, x2, y2),
-            outline="lime",
-            width=3,
-        )
 
-        draw.text(
-            (x1, max(0, y1 - 15)),
-            f"Brick: {confidence:.1%}",
-            fill="lime",
-        )
+        x1 = (x1 - pad_x) / scale
+        y1 = (y1 - pad_y) / scale
+        x2 = (x2 - pad_x) / scale
+        y2 = (y2 - pad_y) / scale
 
-    draw_image.save("brick_detection_result.jpg")
-    draw_image.show()
+        x1 = np.clip(x1, 0, width)
+        x2 = np.clip(x2, 0, width)
+        y1 = np.clip(y1, 0, height)
+        y2 = np.clip(y2, 0, height)
+
+        # draw.rectangle(
+        #     (x1, y1, x2, y2),
+        #     outline="lime",
+        #     width=3,
+        # )
+
+        # draw.text(
+        #     (x1, max(0, y1 - 15)),
+        #     f"Brick: {confidence:.1%}",
+        #     fill="lime",
+        # )
+
+        results.append((
+            int(x1),
+            int(y1),
+            int(x2),
+            int(y2),
+        ))
+
+    # draw_image.save("brick_detection_result.jpg")
+    # draw_image.show()
 
     print(f"Detected {len(predictions)} bricks")
-    return [(x1, y1, x2, y2) for x1, y1, x2, y2 in predictions]
+    return results

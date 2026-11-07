@@ -20,7 +20,7 @@ def bytes_to_image(byte_data: bytes) -> MatLike | None:
     :return: A MatLike object OpenCV can use
     """
     nparr = np.frombuffer(byte_data, np.uint8)
-    return cv.imdecode(nparr, cv.IMREAD_COLOR)
+    return cv.cvtColor(cv.imdecode(nparr, cv.IMREAD_COLOR), cv.COLOR_RGB2BGR)
 
 
 def load_models():
