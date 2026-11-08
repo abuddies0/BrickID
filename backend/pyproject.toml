@@ -11,6 +11,7 @@ dependencies = [
     "onnxruntime>=1.31.1",
     "opencv-python-headless>=5.0.0.93",
     "pillow>=13.0.0",
+    "psycopg[binary]>=3.3.8",
     "python-multipart>=0.0.33",
     "sqlalchemy>=2.1.8",
     "torch>=2.15.0",

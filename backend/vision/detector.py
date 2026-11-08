@@ -6,12 +6,11 @@
 #
 ###################################################################
 # from PIL import Image, ImageDraw
-from cv2.typing import MatLike
-import numpy as np
-from numpy.typing import NDArray
-import onnxruntime as ort
 import cv2 as cv
-
+import numpy as np
+import onnxruntime as ort
+from cv2.typing import MatLike
+from numpy.typing import NDArray
 
 INPUT_SIZE = 512
 STRIDES = (8, 16, 32)
@@ -29,11 +28,11 @@ def load_models():
     """
     global session
     global input_name
-    
+
     session = ort.InferenceSession(
         "model/brick_detector.onnx",
         # providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
-        providers=["CPUExecutionProvider"]
+        providers=["CPUExecutionProvider"],
     )
     input_name = session.get_inputs()[0].name
     print("Loaded detection models!")
@@ -49,7 +48,7 @@ def cleanup_models():
 def _decode_boxes(raw_boxes) -> NDArray[np.float64]:
     """
     Decode YOLOv8 distribution-based box predictions.
-    
+
     :param raw_boxes: The YOLOv8 box predictions
     """
 
@@ -57,14 +56,10 @@ def _decode_boxes(raw_boxes) -> NDArray[np.float64]:
     distances = raw_boxes.reshape(-1, 4, 16)
 
     # Softmax over the 16 possible distance values.
-    distances = distances - np.max(
-        distances, axis=-1, keepdims=True
-    )
+    distances = distances - np.max(distances, axis=-1, keepdims=True)
 
     probabilities = np.exp(distances)
-    probabilities /= probabilities.sum(
-        axis=-1, keepdims=True
-    )
+    probabilities /= probabilities.sum(axis=-1, keepdims=True)
 
     # Expected distance for each of the four coordinates.
     bins = np.arange(16, dtype=np.float32)
@@ -74,7 +69,7 @@ def _decode_boxes(raw_boxes) -> NDArray[np.float64]:
 def _generate_anchors(size):
     """
     Generate YOLOv8 anchor centers and stride values.
-    
+
     :param size: The size of the anchors
     """
 
@@ -97,9 +92,7 @@ def _generate_anchors(size):
         ).astype(np.float32)
 
         anchors.append(points + 0.5)
-        strides.append(
-            np.full(len(points), stride, dtype=np.float32)
-        )
+        strides.append(np.full(len(points), stride, dtype=np.float32))
 
     return np.concatenate(anchors), np.concatenate(strides)
 
@@ -121,32 +114,19 @@ def nms(boxes, scores, threshold):
 
         remaining = order[1:]
 
-        x1 = np.maximum(
-            boxes[current, 0], boxes[remaining, 0]
-        )
-        y1 = np.maximum(
-            boxes[current, 1], boxes[remaining, 1]
-        )
-        x2 = np.minimum(
-            boxes[current, 2], boxes[remaining, 2]
-        )
-        y2 = np.minimum(
-            boxes[current, 3], boxes[remaining, 3]
+        x1 = np.maximum(boxes[current, 0], boxes[remaining, 0])
+        y1 = np.maximum(boxes[current, 1], boxes[remaining, 1])
+        x2 = np.minimum(boxes[current, 2], boxes[remaining, 2])
+        y2 = np.minimum(boxes[current, 3], boxes[remaining, 3])
+
+        intersection = np.maximum(0, x2 - x1) * np.maximum(0, y2 - y1)
+
+        area_current = (boxes[current, 2] - boxes[current, 0]) * (
+            boxes[current, 3] - boxes[current, 1]
         )
 
-        intersection = (
-            np.maximum(0, x2 - x1)
-            * np.maximum(0, y2 - y1)
-        )
-
-        area_current = (
-            (boxes[current, 2] - boxes[current, 0])
-            * (boxes[current, 3] - boxes[current, 1])
-        )
-
-        area_remaining = (
-            (boxes[remaining, 2] - boxes[remaining, 0])
-            * (boxes[remaining, 3] - boxes[remaining, 1])
+        area_remaining = (boxes[remaining, 2] - boxes[remaining, 0]) * (
+            boxes[remaining, 3] - boxes[remaining, 1]
         )
 
         union = area_current + area_remaining - intersection
@@ -181,14 +161,13 @@ def _predict(image):
         {input_name: image},
     )
 
-    output_names = [
-        output.name for output in session.get_outputs()
-    ]
+    output_names = [output.name for output in session.get_outputs()]
 
     predictions = dict(zip(output_names, raw_outputs))
 
-    raw_boxes = predictions["boxes"][0]
-    scores = predictions["classes"][0, :, 0]
+    # Warnings ignored because output of model was validated through testing
+    raw_boxes = predictions["boxes"][0]  # type: ignore
+    scores = predictions["classes"][0, :, 0]  # type: ignore
 
     # Decode distances from the 64 regression channels.
     distances = _decode_boxes(raw_boxes)
@@ -222,10 +201,7 @@ def _predict(image):
     boxes[:, [1, 3]] = np.clip(boxes[:, [1, 3]], 0, 512)
 
     # Remove invalid boxes.
-    valid = (
-        (boxes[:, 2] > boxes[:, 0])
-        & (boxes[:, 3] > boxes[:, 1])
-    )
+    valid = (boxes[:, 2] > boxes[:, 0]) & (boxes[:, 3] > boxes[:, 1])
 
     boxes = boxes[valid]
     scores = scores[valid]
@@ -237,10 +213,12 @@ def _predict(image):
         IOU_THRESHOLD,
     )
 
-    return np.column_stack([
-        boxes[keep],
-        scores[keep],
-    ]).astype(np.float32)
+    return np.column_stack(
+        [
+            boxes[keep],
+            scores[keep],
+        ]
+    ).astype(np.float32)
 
 
 def detect_bricks(image: MatLike) -> list[tuple[int, int, int, int]]:
@@ -271,10 +249,7 @@ def detect_bricks(image: MatLike) -> list[tuple[int, int, int, int]]:
     pad_x = (INPUT_SIZE - new_width) // 2
     pad_y = (INPUT_SIZE - new_height) // 2
 
-    canvas[
-        pad_y:pad_y + new_height,
-        pad_x:pad_x + new_width
-    ] = resized
+    canvas[pad_y : pad_y + new_height, pad_x : pad_x + new_width] = resized
 
     predictions = _predict(canvas)
     if predictions is None:
@@ -286,7 +261,6 @@ def detect_bricks(image: MatLike) -> list[tuple[int, int, int, int]]:
     results = []
 
     for x1, y1, x2, y2, confidence in predictions:
-
         x1 = (x1 - pad_x) / scale
         y1 = (y1 - pad_y) / scale
         x2 = (x2 - pad_x) / scale
@@ -309,12 +283,14 @@ def detect_bricks(image: MatLike) -> list[tuple[int, int, int, int]]:
         #     fill="lime",
         # )
 
-        results.append((
-            int(x1),
-            int(y1),
-            int(x2),
-            int(y2),
-        ))
+        results.append(
+            (
+                int(x1),
+                int(y1),
+                int(x2),
+                int(y2),
+            )
+        )
 
     # draw_image.save("brick_detection_result.jpg")
     # draw_image.show()
